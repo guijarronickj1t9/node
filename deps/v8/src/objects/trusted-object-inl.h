@@ -20,8 +20,6 @@
 namespace v8 {
 namespace internal {
 
-OBJECT_CONSTRUCTORS_IMPL(TrustedObject, HeapObject)
-
 template <typename T>
 Tagged<T> TrustedObject::ReadProtectedPointerField(int offset) const {
   return TaggedField<T, 0, TrustedSpaceCompressionScheme>::load(*this, offset);
@@ -84,8 +82,6 @@ void TrustedObject::VerifyProtectedPointerField(Isolate* isolate, int offset) {
 }
 #endif
 
-OBJECT_CONSTRUCTORS_IMPL(ExposedTrustedObject, TrustedObject)
-
 void ExposedTrustedObject::InitAndPublish(Isolate* isolate) {
 #ifdef V8_ENABLE_SANDBOX
   InitSelfIndirectPointerField(kSelfIndirectPointerOffset, isolate,
@@ -124,7 +120,7 @@ void ExposedTrustedObject::Publish(IsolateForSandbox isolate) {
 
   InstanceType instance_type = map()->instance_type();
   IndirectPointerTag tag =
-      IndirectPointerTagFromInstanceType(instance_type, false);
+      IndirectPointerTagFromInstanceType(instance_type, SharedFlag::kNo);
   IndirectPointerHandle handle =
       ACQUIRE_READ_UINT32_FIELD(*this, kSelfIndirectPointerOffset);
   TrustedPointerTable& table = isolate.GetTrustedPointerTableFor(tag);
@@ -132,11 +128,28 @@ void ExposedTrustedObject::Publish(IsolateForSandbox isolate) {
 #endif
 }
 
+void ExposedTrustedObject::Unpublish(IsolateForSandbox isolate) {
+#ifdef V8_ENABLE_SANDBOX
+  DCHECK(IsPublished(isolate));
+  // Currently only non-shared objects can be unpublished. We could change that
+  // in the future, which would probably require a new shared+unpublished tag.
+  DCHECK(!HeapLayout::InAnySharedSpace(*this));
+
+  InstanceType instance_type = map()->instance_type();
+  IndirectPointerTag tag =
+      IndirectPointerTagFromInstanceType(instance_type, SharedFlag::kNo);
+  IndirectPointerHandle handle =
+      ACQUIRE_READ_UINT32_FIELD(*this, kSelfIndirectPointerOffset);
+  TrustedPointerTable& table = isolate.GetTrustedPointerTableFor(tag);
+  table.Unpublish(handle);
+#endif  // V8_ENABLE_SANDBOX
+}
+
 bool ExposedTrustedObject::IsPublished(IsolateForSandbox isolate) const {
 #ifdef V8_ENABLE_SANDBOX
   InstanceType instance_type = map()->instance_type();
   IndirectPointerTag tag =
-      IndirectPointerTagFromInstanceType(instance_type, false);
+      IndirectPointerTagFromInstanceType(instance_type, SharedFlag::kNo);
   return !IsTrustedPointerFieldUnpublished(kSelfIndirectPointerOffset, tag,
                                            isolate);
 #else
@@ -165,6 +178,40 @@ void ExposedTrustedObjectLayout::InitAndPublish(LocalIsolate* isolate) {
   // Background threads using LocalIsolates don't use
   // TrustedPointerPublishingScopes.
   InitSelfIndirectPointerField(&self_indirect_pointer_, isolate, nullptr);
+#endif
+}
+
+void ExposedTrustedObjectLayout::InitDontPublish(Isolate* isolate) {
+#ifdef V8_ENABLE_SANDBOX
+  UncheckedCast<ExposedTrustedObject>(Tagged(this))->InitDontPublish(isolate);
+#endif
+}
+
+void ExposedTrustedObjectLayout::InitDontPublish(LocalIsolate* isolate) {
+#ifdef V8_ENABLE_SANDBOX
+  UncheckedCast<ExposedTrustedObject>(Tagged(this))->InitDontPublish(isolate);
+#endif
+}
+
+void ExposedTrustedObjectLayout::Publish(IsolateForSandbox isolate) {
+#ifdef V8_ENABLE_SANDBOX
+  UncheckedCast<ExposedTrustedObject>(Tagged(this))->Publish(isolate);
+#endif
+}
+
+void ExposedTrustedObjectLayout::Unpublish(IsolateForSandbox isolate) {
+#ifdef V8_ENABLE_SANDBOX
+  UncheckedCast<ExposedTrustedObject>(Tagged(this))->Unpublish(isolate);
+#endif
+}
+
+bool ExposedTrustedObjectLayout::IsPublished(IsolateForSandbox isolate) const {
+#ifdef V8_ENABLE_SANDBOX
+  return UncheckedCast<ExposedTrustedObject>(
+             Tagged(const_cast<ExposedTrustedObjectLayout*>(this)))
+      ->IsPublished(isolate);
+#else
+  return true;
 #endif
 }
 

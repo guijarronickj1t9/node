@@ -230,6 +230,7 @@
 #define JS_OTHER_OP_LIST(V)            \
   JS_CALL_OP_LIST(V)                   \
   JS_CONSTRUCT_OP_LIST(V)              \
+  V(JSAsyncFunctionAwait)              \
   V(JSAsyncFunctionEnter)              \
   V(JSAsyncFunctionReject)             \
   V(JSAsyncFunctionResolve)            \
@@ -276,6 +277,7 @@
   V(ChangeTaggedToUint32)                     \
   V(ChangeTaggedToFloat64)                    \
   V(ChangeTaggedToTaggedSigned)               \
+  V(ChangeSmiOrHoleToFloat64)                 \
   V(ChangeNumberOrHoleToFloat64)              \
   V(ChangeInt31ToTaggedSigned)                \
   V(ChangeInt32ToTagged)                      \
@@ -291,6 +293,7 @@
   V(ChangeUint64ToBigInt)                     \
   V(TruncateBigIntToWord64)                   \
   V(TruncateNumberOrOddballToWord32)          \
+  V(TruncateSmiOrHoleToWord32)                \
   V(TruncateNumberOrOddballOrHoleToWord32)    \
   V(TruncateTaggedToFloat64)                  \
   V(TruncateTaggedToFloat64PreserveUndefined) \
@@ -325,6 +328,7 @@
   V(CheckedUint64ToTaggedSigned)         \
   V(CheckedFloat64ToInt32)               \
   V(CheckedFloat64ToInt64)               \
+  V(CheckedFloat64ToUint64)              \
   V(CheckedFloat64ToAdditiveSafeInteger) \
   V(CheckedTaggedSignedToInt32)          \
   V(CheckedTaggedToInt32)                \
@@ -333,6 +337,7 @@
   V(CheckedTaggedToFloat64)              \
   V(CheckedTaggedToAdditiveSafeInteger)  \
   V(CheckedTaggedToInt64)                \
+  V(CheckedTaggedToUint64)               \
   V(CheckedTaggedToTaggedSigned)         \
   V(CheckedTaggedToTaggedPointer)
 
@@ -475,6 +480,7 @@
   V(CheckIf)                                \
   V(CheckInternalizedString)                \
   V(CheckMaps)                              \
+  V(CheckHomomorphic)                       \
   V(CheckNotTaggedHole)                     \
   V(CheckNumber)                            \
   V(CheckNumberOrUndefined)                 \
@@ -878,8 +884,8 @@
   V(Word32PairShl)                       \
   V(Word32PairShr)                       \
   V(Word32PairSar)                       \
-  V(ProtectedLoad)                       \
-  V(ProtectedStore)                      \
+  V(TrappingLoad)                        \
+  V(TrappingStore)                       \
   V(LoadTrapOnNull)                      \
   V(StoreTrapOnNull)                     \
   V(MemoryBarrier)                       \

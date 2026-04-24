@@ -58,8 +58,9 @@ std::optional<Tagged<Object>> Dictionary<Derived, Shape>::TryValueAt(
   SLOW_DCHECK(Isolate::Current()->heap()->IsPendingAllocation(Tagged(this)));
   // We can read length() in a non-atomic way since we are reading an
   // initialized object which is not pending allocation.
-  if (DerivedHashTable::EntryToIndex(entry) + Derived::kEntryValueIndex >=
-      this->length()) {
+  if (static_cast<uint32_t>(DerivedHashTable::EntryToIndex(entry) +
+                            Derived::kEntryValueIndex) >=
+      this->ulength().value()) {
     return {};
   }
   return ValueAt(entry);
@@ -263,7 +264,7 @@ Tagged<Name> GlobalDictionary::NameAt(InternalIndex entry) {
 
 Tagged<Name> GlobalDictionary::NameAt(PtrComprCageBase cage_base,
                                       InternalIndex entry) {
-  return CellAt(cage_base, entry)->name(cage_base);
+  return CellAt(cage_base, entry)->name();
 }
 
 Tagged<Object> GlobalDictionary::ValueAt(InternalIndex entry) {
@@ -273,7 +274,7 @@ Tagged<Object> GlobalDictionary::ValueAt(InternalIndex entry) {
 
 Tagged<Object> GlobalDictionary::ValueAt(PtrComprCageBase cage_base,
                                          InternalIndex entry) {
-  return CellAt(cage_base, entry)->value(cage_base);
+  return CellAt(cage_base, entry)->value();
 }
 
 void GlobalDictionary::SetEntry(InternalIndex entry, Tagged<Object> key,

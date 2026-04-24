@@ -33,16 +33,25 @@ class EarlyReadOnlyRoots;
 // A safe HeapObject size is a uint32_t that's guaranteed to yield in OOB within
 // the sandbox. The alias exists to force appropriate conversions at the
 // callsites when V8 cannot enable stricter compiler flags in general.
+// TODO(375937549): Find a better name for this since it's no longer used just
+// for HeapObject size.
 using SafeHeapObjectSize = base::StrongAlias<class HeapObjectSizeTag, uint32_t>;
 
 V8_OBJECT class HeapObjectLayout {
  public:
-  HeapObjectLayout() = delete;
+  // TODO(jgruber): Remove once V8_OBJECT migration is complete and no
+  // Torque-generated class inherits from a V8_OBJECT layout class.
+  HeapObjectLayout() V8_NOEXCEPT = default;
 
   // [map]: Contains a map which contains the object's reflective
   // information.
   inline Tagged<Map> map() const;
+  // The cage_base parameter is unused for HeapObjectLayout (memory is
+  // accessed directly without decompression-base hint); the overload
+  // exists for source compatibility with the legacy HeapObject API.
+  inline Tagged<Map> map(PtrComprCageBase cage_base) const;
   inline Tagged<Map> map(AcquireLoadTag) const;
+  inline Tagged<Map> map(PtrComprCageBase cage_base, AcquireLoadTag tag) const;
 
   inline MapWord map_word(RelaxedLoadTag) const;
 
@@ -90,12 +99,91 @@ V8_OBJECT class HeapObjectLayout {
   // Returns the address of this HeapObject.
   inline Address address() const { return reinterpret_cast<Address>(this); }
 
+  // Compatibility delegates for Torque-generated subclasses that inherit from
+  // a V8_OBJECT layout class, mirroring the HeapObject API they lost.
+  // TODO(jgruber): Remove once the V8_OBJECT migration is complete.
+  inline Address field_address(size_t offset) const {
+    return address() + offset;
+  }
+  inline ObjectSlot RawField(int byte_offset) const;
+  inline MaybeObjectSlot RawMaybeWeakField(int byte_offset) const;
+  inline IndirectPointerSlot RawIndirectPointerField(
+      int byte_offset, IndirectPointerTagRange tag_range) const;
+  inline ExternalPointerSlot RawExternalPointerField(
+      int byte_offset, ExternalPointerTagRange tag_range) const;
+  inline operator Tagged<HeapObject>() const;
+
+  // External pointer field helpers mirroring the HeapObject API.
+  // TODO(jgruber): Remove once the V8_OBJECT migration is complete.
+  template <ExternalPointerTag tag>
+  inline void InitExternalPointerField(
+      size_t offset, IsolateForSandbox isolate, Address value,
+      WriteBarrierMode mode = UPDATE_WRITE_BARRIER);
+  template <ExternalPointerTagRange tag_range>
+  inline Address ReadExternalPointerField(size_t offset,
+                                          IsolateForSandbox isolate) const;
+  template <ExternalPointerTag tag>
+  inline void WriteExternalPointerField(size_t offset,
+                                        IsolateForSandbox isolate,
+                                        Address value);
+  inline void SetupLazilyInitializedExternalPointerField(size_t offset);
+  inline bool IsLazilyInitializedExternalPointerFieldInitialized(
+      size_t offset) const;
+  template <ExternalPointerTag tag>
+  inline void WriteLazilyInitializedExternalPointerField(
+      size_t offset, IsolateForSandbox isolate, Address value);
+
+  // SandboxedPointer_t field helpers mirroring the HeapObject API.
+  // TODO(jgruber): Remove once the V8_OBJECT migration is complete.
+  inline Address ReadSandboxedPointerField(size_t offset,
+                                           PtrComprCageBase cage_base) const;
+  inline void WriteSandboxedPointerField(size_t offset,
+                                         PtrComprCageBase cage_base,
+                                         Address value);
+  inline void WriteSandboxedPointerField(size_t offset, Isolate* isolate,
+                                         Address value);
+
+  // BoundedSize field helpers mirroring the HeapObject API.
+  // TODO(jgruber): Remove once the V8_OBJECT migration is complete.
+  inline size_t ReadBoundedSizeField(size_t offset) const;
+  inline void WriteBoundedSizeField(size_t offset, size_t value);
+
+  template <class T>
+  inline T ReadField(size_t offset) const
+    requires(std::is_arithmetic_v<T> || std::is_enum_v<T> ||
+             std::is_pointer_v<T>)
+  {
+    return ReadMaybeUnalignedValue<T>(field_address(offset));
+  }
+
+  template <class T>
+  inline void WriteField(size_t offset, T value) const
+    requires(std::is_arithmetic_v<T> || std::is_enum_v<T> ||
+             std::is_pointer_v<T>)
+  {
+    return WriteMaybeUnalignedValue<T>(field_address(offset), value);
+  }
+
+  // Atomic integral-field accessors mirroring the HeapObject API so call
+  // sites hold their shape across the migration.
+  template <class T>
+  inline T Relaxed_ReadField(size_t offset) const
+    requires((std::is_arithmetic_v<T> || std::is_enum_v<T>) &&
+             !std::is_floating_point_v<T>);
+
+  template <class T>
+  inline void Relaxed_WriteField(size_t offset, T value)
+    requires((std::is_arithmetic_v<T> || std::is_enum_v<T>) &&
+             !std::is_floating_point_v<T>);
+
   // This is slower that GetReadOnlyRoots, but safe to call during
   // bootstrapping.
   inline EarlyReadOnlyRoots EarlyGetReadOnlyRoots() const;
 
   // Returns the heap object's size in bytes
+  // TODO(375937549): Replace all callsites of Size() with SafeSize().
   inline int Size() const;
+  inline SafeHeapObjectSize SafeSize() const;
 
   // Given a heap object's map pointer, returns the heap size in bytes
   // Useful when the map pointer field is used for other purposes.
@@ -121,6 +209,15 @@ V8_OBJECT class HeapObjectLayout {
       std::atomic<IndirectPointerHandle>* field, IsolateForSandbox isolate,
       TrustedPointerPublishingScope* opt_publishing_scope);
 #endif  // V8_ENABLE_SANDBOX
+
+#ifdef VERIFY_HEAP
+  // Field-verifier trampolines mirroring the HeapObject API. Let
+  // HeapObjectLayout subclasses use unqualified VerifyObjectField / ... from
+  // their Verify methods during the V8_OBJECT migration.
+  inline void VerifyObjectField(Isolate* isolate, int offset);
+  inline void VerifySmiField(int offset);
+  inline void VerifyMaybeObjectField(Isolate* isolate, int offset);
+#endif  // VERIFY_HEAP
 
 #ifdef OBJECT_PRINT
   void PrintHeader(std::ostream& os, const char* id);
@@ -399,7 +496,7 @@ class HeapObject : public TaggedImpl<HeapObjectReferenceType::STRONG, Address> {
   // Trusted pointers.
   //
   // A pointer to a trusted object. When the sandbox is enabled, these are
-  // indirect pointers using the the TrustedPointerTable (TPT). When the sandbox
+  // indirect pointers using the TrustedPointerTable (TPT). When the sandbox
   // is disabled, they are regular tagged pointers. They must always point to an
   // ExposedTrustedObject as (only) these objects can be referenced through the
   // trusted pointer table.
@@ -414,8 +511,9 @@ class HeapObject : public TaggedImpl<HeapObjectReferenceType::STRONG, Address> {
   // Like ReadTrustedPointerField, but if the field is cleared, this will
   // return Smi::zero().
   template <IndirectPointerTagRange tag_range>
-  inline Tagged<Object> ReadMaybeEmptyTrustedPointerField(
-      size_t offset, IsolateForSandbox isolate, AcquireLoadTag) const;
+  inline auto ReadMaybeEmptyTrustedPointerField(size_t offset,
+                                                IsolateForSandbox isolate,
+                                                AcquireLoadTag) const;
 
   template <IndirectPointerTagRange tag_range>
   inline void WriteTrustedPointerField(size_t offset,
@@ -446,20 +544,22 @@ class HeapObject : public TaggedImpl<HeapObjectReferenceType::STRONG, Address> {
   inline bool IsCodePointerFieldEmpty(size_t offset) const;
   inline void ClearCodePointerField(size_t offest);
 
-  inline Address ReadCodeEntrypointViaCodePointerField(
-      size_t offset, CodeEntrypointTag tag) const;
-  inline void WriteCodeEntrypointViaCodePointerField(size_t offset,
-                                                     Address value,
-                                                     CodeEntrypointTag tag);
-
   // JSDispatchHandles.
   //
   // These are references to entries in the JSDispatchTable, which contain the
   // current code for a function.
+  //
+  // TODO(leszeks): Remove after JSFunction is ported to the new layout.
   template <typename ObjectType>
   static inline JSDispatchHandle AllocateAndInstallJSDispatchHandle(
-      ObjectType host, size_t offset, Isolate* isolate,
+      DirectHandle<ObjectType> host, size_t offset, Isolate* isolate,
       uint16_t parameter_count, DirectHandle<Code> code,
+      WriteBarrierMode mode = WriteBarrierMode::UPDATE_WRITE_BARRIER);
+
+  template <typename ObjectType>
+  static inline JSDispatchHandle AllocateAndInstallJSDispatchHandle(
+      DirectHandle<ObjectType> host, JSDispatchHandle* location,
+      Isolate* isolate, uint16_t parameter_count, DirectHandle<Code> code,
       WriteBarrierMode mode = WriteBarrierMode::UPDATE_WRITE_BARRIER);
 
   // Returns the field at offset in obj, as a read/write Object reference.
@@ -538,13 +638,14 @@ class HeapObject : public TaggedImpl<HeapObjectReferenceType::STRONG, Address> {
   HeapObject* operator->() { return this; }
   const HeapObject* operator->() const { return this; }
 
- protected:
+ public:
   struct SkipTypeCheckTag {};
+
+ protected:
   friend class Tagged<HeapObject>;
   explicit V8_INLINE constexpr HeapObject(Address ptr,
                                           HeapObject::SkipTypeCheckTag)
       : TaggedImpl(ptr) {}
-  explicit inline HeapObject(Address ptr);
 
   // Static overwrites of TaggedImpl's IsSmi/IsHeapObject, to avoid conflicts
   // with IsSmi(Tagged<HeapObject>) inside HeapObject subclasses' methods.
@@ -573,10 +674,6 @@ class HeapObject : public TaggedImpl<HeapObjectReferenceType::STRONG, Address> {
   V8_INLINE void set_map(IsolateT* isolate, Tagged<Map> value,
                          MemoryOrder order, VerificationMode mode);
 };
-
-inline HeapObject::HeapObject(Address ptr) : TaggedImpl(ptr) {
-  IsHeapObject(*this);
-}
 
 template <typename T>
 // static
@@ -612,9 +709,11 @@ constexpr HeapObject Tagged<HeapObject>::ToRawPtr() const {
                           PtrComprCageBase cage_base);
 HEAP_OBJECT_TYPE_LIST(IS_TYPE_FUNCTION_DECL)
 IS_TYPE_FUNCTION_DECL(HashTableBase)
+IS_TYPE_FUNCTION_DECL(SloppyArgumentsElements)
 IS_TYPE_FUNCTION_DECL(SmallOrderedHashTable)
 IS_TYPE_FUNCTION_DECL(PropertyDictionary)
 IS_TYPE_FUNCTION_DECL(AnyHole)
+IS_TYPE_FUNCTION_DECL(StrongDescriptorArray)
 #undef IS_TYPE_FUNCTION_DECL
 
 // Most calls to Is<Oddball> should go via the Tagged<Object> overloads, withst

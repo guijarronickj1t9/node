@@ -132,6 +132,12 @@ class ExposedTrustedObject : public TrustedObject {
   // invalid type tag) until this method is called.
   inline void Publish(IsolateForSandbox isolate);
 
+  // Undoes earlier publishing of this object, making it inaccessible from
+  // within the sandbox.
+  // This is recommended when a trusted object is no longer used, e.g. the old
+  // backing store of a growable table.
+  inline void Unpublish(IsolateForSandbox isolate);
+
   // Returns true if this trusted object is "published", i.e. accessible from
   // within the sandbox via the trusted pointer table.
   inline bool IsPublished(IsolateForSandbox isolate) const;
@@ -171,6 +177,14 @@ V8_OBJECT class ExposedTrustedObjectLayout : public TrustedObjectLayout {
   // InitDontPublish variant instead.
   inline void InitAndPublish(Isolate* isolate);
   inline void InitAndPublish(LocalIsolate* isolate);
+
+  inline void InitDontPublish(Isolate* isolate);
+  inline void InitDontPublish(LocalIsolate* isolate);
+
+  inline void Publish(IsolateForSandbox isolate);
+  inline void Unpublish(IsolateForSandbox isolate);
+
+  inline bool IsPublished(IsolateForSandbox isolate) const;
 
   inline IndirectPointerHandle self_indirect_pointer_handle() const;
 
